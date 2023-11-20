@@ -319,7 +319,7 @@ def push_dataset_card(dataset: DatasetDict, repo_id: str):
         )
     if info_to_dump.citation and len(info_to_dump.citation):
         data_card_content = (
-            data_card_content + f"\n## Citation\n {info_to_dump.citation}\n"
+            data_card_content + f"\n## Citation\n ```\n{info_to_dump.citation}\n```\n"
         )
     if info_to_dump.license and len(info_to_dump.license):
         data_card_content = (
