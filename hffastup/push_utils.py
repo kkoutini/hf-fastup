@@ -222,7 +222,7 @@ def upload_to_hf_hub(
                 if i >= stop_at_shard:
                     break
             shard = dataset.shard(num_shards=num_shards, index=i, contiguous=True)
-            out_path = tmp_save_dir + shard_name.format(i)
+            out_path = os.path.join(tmp_save_dir, shard_name.format(i))
             if api.file_exists(
                 repo_id, "data/" + shard_name.format(i), repo_type="dataset"
             ):
@@ -241,8 +241,11 @@ def upload_to_hf_hub(
                     f"Shard {shard_name.format(i)} already exists locally, skipping"
                 )
             else:
-                shard.to_parquet(tmp_save_dir + "tmp.parquet")
-                os.rename(tmp_save_dir + "tmp.parquet", out_path)
+                tmp_file = os.path.join(tmp_save_dir, f"{os.getpid()}_tmp.parquet")
+                shard.to_parquet(
+                    tmp_file
+                )  # save to temp file to avoid, partialy written files
+                os.rename(tmp_file, out_path)
             qq.put(("upload", (shard_name.format(i), repo_id, tmp_save_dir)))
 
     for _ in range(0, len(all_upload_procs)):
