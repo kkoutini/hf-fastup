@@ -1,0 +1,6 @@
+pre-commit
+pytest
+pytest-cov
+pytest-env
+datasets>=2.15.0
+hf_transfer>=0.1.4
