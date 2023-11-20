@@ -4,7 +4,7 @@ from setuptools import find_packages, setup
 long_description = open("README.md", "r").read()
 
 setup(
-    name="hffastup",
+    name="HF-fastup",
     description="Fast upload in parallel large datasets to HuggingFace Datasets hub.",
     author="Khaled Koutini",
     author_email="first.last@jku.at",
