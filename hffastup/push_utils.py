@@ -246,7 +246,7 @@ def upload_to_hf_hub(
                     tmp_file
                 )  # save to temp file to avoid, partialy written files
                 os.rename(tmp_file, out_path)
-            qq.put(("upload", (shard_name.format(i), repo_id, tmp_save_dir)))
+            qq.put(("upload", (shard_name.format(i), repo_id, out_path)))
 
     for _ in range(0, len(all_upload_procs)):
         qq.put(("DONE", None))
