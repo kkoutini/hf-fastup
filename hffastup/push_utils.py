@@ -144,12 +144,12 @@ def upload_proc(batch_size, queue):
             current_batch_repo_paths = []
         if msg == "DONE":
             break
-        shard_name, repo_id, save_dir = args
+        shard_name, repo_id, save_path = args
         logger.info(
             "proc %s: batching %s to %s %s"
-            % (os.getpid(), save_dir + shard_name, repo_id, "data/" + shard_name)
+            % (os.getpid(), save_path, repo_id, "data/" + shard_name)
         )
-        current_batch_paths.append(save_dir + shard_name)
+        current_batch_paths.append(save_path)
         current_batch_repo_paths.append("data/" + shard_name)
 
 
