@@ -1,3 +1,7 @@
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
-from .push_utils import push_dataset_card, upload_to_hf_hub
+from .push_utils import (
+    push_dataset_card,
+    upload_to_hf_hub,
+    upload_dataset_folder_to_hf_hub,
+)
