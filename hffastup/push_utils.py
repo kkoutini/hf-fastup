@@ -46,6 +46,7 @@ from datasets.info import DatasetInfo, DatasetInfosDict
 from datasets.splits import SplitDict, SplitInfo
 from datasets import DatasetDict
 from datasets.utils.py_utils import convert_file_size_to_int
+from regex import X
 
 datasets.config.MAX_SHARD_SIZE = "2GB"
 datasets.logging.set_verbosity_info()
@@ -125,7 +126,7 @@ def upload_batch(repo_id, in_repo, paths):
                 f.write(path + "," + repo_id + "\n")
 
 
-def upload_proc(batch_size, queue):
+def upload_proc(batch_size, queue, delete_local=True):
     """Read from the queue; this spawns as a separate Process"""
 
     logger.info("proc %s: started!" % (os.getpid()))
@@ -137,9 +138,10 @@ def upload_proc(batch_size, queue):
             current_batch_paths
         ) >= batch_size:
             upload_batch(repo_id, current_batch_repo_paths, current_batch_paths)
-            for p in current_batch_paths:
-                logger.info("proc %s: Deleting %s" % (os.getpid(), p))
-                os.remove(p)
+            if delete_local:
+                for p in current_batch_paths:
+                    logger.info("proc %s: Deleting %s" % (os.getpid(), p))
+                    os.remove(p)
             current_batch_paths = []
             current_batch_repo_paths = []
         if msg == "DONE":
@@ -153,16 +155,13 @@ def upload_proc(batch_size, queue):
         current_batch_repo_paths.append("data/" + shard_name)
 
 
-def start_upload_procs(qq, num_proc, batch_size):
+def start_upload_procs(qq, num_proc, batch_size, delete_local=True):
     """Start the reader processes and return all in a list to the caller"""
     all_reader_procs = list()
     for _ in range(0, num_proc):
         reader_p = Process(
             target=upload_proc,
-            args=(
-                batch_size,
-                qq,
-            ),
+            args=(batch_size, qq, delete_local),
         )
         reader_p.daemon = True
         reader_p.start()  # Launch reader_p() as another proc
@@ -346,3 +345,68 @@ def push_dataset_card(dataset: DatasetDict, repo_id: str):
         repo_type="dataset",
         revision=revision,
     )
+
+
+def upload_dataset_folder_to_hf_hub(
+    local_path: str,
+    repo_id: str,
+    num_proc: int = 2,
+    private: bool = False,
+    exist_ok: bool = True,
+    files_per_commit=10,
+):
+    """Pushes folder of a dataset to the hub.
+    The files of the dataset are uploaded in parallel. It useful for large datasets.
+    It's recommended to use `hf_transfer`: `pip install hf_transfer` to speed up the upload.
+
+    Args:
+        local_path (path,str): The path to the dataset
+        repo_id (str): The dataset repo on HF Hub to upload to
+        num_proc (int, optional): The number of process to perform shards batching and upload. Defaults to 2.
+        tmp_save_dir (_type_, optional): The temp folder to store the processed dataset shards locally before uploading.
+            It should hold `2 * num_proc * files_per_commit` files temporarly. Defaults to tempfile.gettempdir().
+        files_per_commit (int, optional): The numbers of files to be uploaded in one commit. Defaults to 10.
+
+    Example:
+
+        ```python
+        >>> datasets.logging.set_verbosity_info()
+        >>> dataset = datasets.load_dataset("dataset_id.py")
+        >>> push_utils.upload_to_hf_hub(dataset, "<organization>/<dataset_id>")
+        >>> push_utils.push_dataset_card(dataset, "<organization>/<dataset_id>")
+        ```
+    """
+    api = HfApi()
+    api.create_repo(
+        repo_id,
+        private=private,
+        exist_ok=exist_ok,
+        repo_type="dataset",
+    )
+    qq = Queue(maxsize=num_proc * files_per_commit)
+    all_upload_procs = start_upload_procs(
+        qq, num_proc, batch_size=files_per_commit, delete_local=False
+    )
+
+    from pathlib import Path
+
+    local_path = Path(local_path)
+    files_to_upload = list(x for x in local_path.rglob("*") if x.is_file())
+    logger.info(
+        f"Uploading  {len(files_to_upload)} files, using {num_proc} processes, {files_per_commit} files per commit"
+    )
+    for p in files_to_upload:
+        shard_name = str(p.relative_to(local_path))
+        if api.file_exists(repo_id, shard_name, repo_type="dataset"):
+            logger.info(
+                f"file {shard_name.format(i)} already exists in repo {repo_id} , skipping"
+            )
+            continue
+        qq.put(("upload", (str(shard_name), repo_id, str(p))))
+
+    for _ in range(0, len(all_upload_procs)):
+        qq.put(("DONE", None))
+
+    for idx, a_reader_proc in enumerate(all_upload_procs):
+        logger.info("    Waiting for reader_p.join() index %s" % idx)
+        a_reader_proc.join()  # Wait for a_reader_proc() to finish
