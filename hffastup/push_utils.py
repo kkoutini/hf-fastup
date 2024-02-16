@@ -126,7 +126,7 @@ def upload_batch(repo_id, in_repo, paths):
                 f.write(path + "," + repo_id + "\n")
 
 
-def upload_proc(batch_size, queue, delete_local=True):
+def upload_proc(batch_size, queue, delete_local=True, repo_save_path="data/"):
     """Read from the queue; this spawns as a separate Process"""
 
     logger.info("proc %s: started!" % (os.getpid()))
@@ -149,19 +149,21 @@ def upload_proc(batch_size, queue, delete_local=True):
         shard_name, repo_id, save_path = args
         logger.info(
             "proc %s: batching %s to %s %s"
-            % (os.getpid(), save_path, repo_id, "data/" + shard_name)
+            % (os.getpid(), save_path, repo_id, repo_save_path + shard_name)
         )
         current_batch_paths.append(save_path)
-        current_batch_repo_paths.append("data/" + shard_name)
+        current_batch_repo_paths.append(repo_save_path + shard_name)
 
 
-def start_upload_procs(qq, num_proc, batch_size, delete_local=True):
+def start_upload_procs(
+    qq, num_proc, batch_size, delete_local=True, repo_save_path="data/"
+):
     """Start the reader processes and return all in a list to the caller"""
     all_reader_procs = list()
     for _ in range(0, num_proc):
         reader_p = Process(
             target=upload_proc,
-            args=(batch_size, qq, delete_local),
+            args=(batch_size, qq, delete_local, repo_save_path),
         )
         reader_p.daemon = True
         reader_p.start()  # Launch reader_p() as another proc
@@ -385,7 +387,7 @@ def upload_dataset_folder_to_hf_hub(
     )
     qq = Queue(maxsize=num_proc * files_per_commit)
     all_upload_procs = start_upload_procs(
-        qq, num_proc, batch_size=files_per_commit, delete_local=False
+        qq, num_proc, batch_size=files_per_commit, delete_local=False, repo_save_path=""
     )
 
     from pathlib import Path
@@ -399,7 +401,7 @@ def upload_dataset_folder_to_hf_hub(
         shard_name = str(p.relative_to(local_path))
         if api.file_exists(repo_id, shard_name, repo_type="dataset"):
             logger.info(
-                f"file {shard_name.format(i)} already exists in repo {repo_id} , skipping"
+                f"file {shard_name} already exists in repo {repo_id} , skipping"
             )
             continue
         qq.put(("upload", (str(shard_name), repo_id, str(p))))
